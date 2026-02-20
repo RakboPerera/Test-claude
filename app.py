@@ -82,6 +82,7 @@ def upload_file():
             "mime_type": mime_type,
         })
     except Exception as e:
+        print(f"UPLOAD ERROR: {e}")
         return jsonify({"error": str(e)}), 500
 
 
