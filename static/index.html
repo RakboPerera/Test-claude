@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File Chat — Claude</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3350;
+      --accent: #7c6af7;
+      --accent-hover: #9380ff;
+      --text: #e2e4f0;
+      --text-muted: #8b90a8;
+      --danger: #e05c6a;
+      --success: #4caf7d;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 300px;
+      min-width: 300px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      margin: 16px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(124, 106, 247, 0.06);
+    }
+
+    .upload-zone svg { color: var(--text-muted); margin-bottom: 8px; }
+    .upload-zone p { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+    .upload-zone p span { color: var(--accent); font-weight: 500; }
+
+    #file-input { display: none; }
+
+    .upload-progress {
+      display: none;
+      margin: 0 16px 8px;
+      background: var(--surface2);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .upload-progress-bar {
+      height: 4px;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.3s;
+      animation: indeterminate 1.2s infinite;
+    }
+    @keyframes indeterminate {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(400%); }
+    }
+
+    /* File list */
+    .file-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 12px 12px;
+    }
+
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+
+    .file-item:hover { background: var(--surface2); }
+
+    .file-item.selected {
+      background: rgba(124, 106, 247, 0.15);
+      outline: 1px solid rgba(124, 106, 247, 0.4);
+    }
+
+    .file-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 16px;
+    }
+
+    .file-info { flex: 1; min-width: 0; }
+    .file-name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-type { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    .file-delete {
+      opacity: 0;
+      background: none;
+      border: none;
+      color: var(--danger);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    .file-item:hover .file-delete { opacity: 1; }
+    .file-delete:hover { background: rgba(224, 92, 106, 0.15); }
+
+    .no-files {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      padding: 20px;
+    }
+
+    .file-hint {
+      padding: 8px 16px 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ── Main chat area ── */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .chat-header h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .chat-header .subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    /* Messages */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .message {
+      display: flex;
+      gap: 12px;
+      max-width: 780px;
+    }
+
+    .message.user { margin-left: auto; flex-direction: row-reverse; }
+
+    .avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+      font-weight: 700;
+    }
+
+    .message.user .avatar {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .message.assistant .avatar {
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: #fff;
+    }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.65;
+      max-width: 640px;
+    }
+
+    .message.user .bubble {
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.assistant .bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+
+    .bubble p { margin-bottom: 8px; }
+    .bubble p:last-child { margin-bottom: 0; }
+    .bubble code {
+      background: rgba(255,255,255,0.1);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: "SF Mono", monospace;
+      font-size: 12px;
+    }
+    .bubble pre {
+      background: rgba(0,0,0,0.3);
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+    .bubble pre code { background: none; padding: 0; }
+
+    .message-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .message-file-tag {
+      background: rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    /* Typing indicator */
+    .typing .bubble::after {
+      content: "▋";
+      animation: blink 0.8s infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .welcome {
+      text-align: center;
+      color: var(--text-muted);
+      margin: auto;
+      padding: 40px;
+    }
+    .welcome h2 { font-size: 22px; margin-bottom: 8px; color: var(--text); }
+    .welcome p { font-size: 14px; line-height: 1.6; }
+
+    /* Input area */
+    .input-area {
+      padding: 16px 24px 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .input-wrapper {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      padding: 10px 12px;
+      transition: border-color 0.2s;
+    }
+
+    .input-wrapper:focus-within { border-color: var(--accent); }
+
+    #user-input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      max-height: 160px;
+      font-family: inherit;
+    }
+
+    #user-input::placeholder { color: var(--text-muted); }
+
+    .send-btn {
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .send-btn:hover { background: var(--accent-hover); }
+    .send-btn:active { transform: scale(0.95); }
+    .send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+    .input-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      padding: 0 2px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: 13px;
+      z-index: 999;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { border-color: var(--danger); color: var(--danger); }
+    .toast.success { border-color: var(--success); color: var(--success); }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h2>Uploaded Files</h2>
+  </div>
+
+  <div class="upload-zone" id="upload-zone">
+    <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+    </svg>
+    <p>Drop files here or <span>browse</span></p>
+    <p>PDF, TXT, MD, CSV, images…</p>
+    <input type="file" id="file-input" multiple
+      accept=".pdf,.txt,.md,.csv,.html,.xml,.jpg,.jpeg,.png,.gif,.webp" />
+  </div>
+
+  <div class="upload-progress" id="upload-progress">
+    <div class="upload-progress-bar" id="upload-progress-bar"></div>
+  </div>
+
+  <div class="file-list" id="file-list">
+    <div class="no-files">No files uploaded yet</div>
+  </div>
+
+  <p class="file-hint">
+    Click a file to select/deselect it for the next message. Selected files are included with each chat message.
+  </p>
+</aside>
+
+<!-- Chat -->
+<main class="chat-area">
+  <header class="chat-header">
+    <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" style="color:var(--accent)">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/>
+    </svg>
+    <h1>File Chat</h1>
+    <span class="subtitle" id="context-label">No files selected</span>
+  </header>
+
+  <div class="messages" id="messages">
+    <div class="welcome">
+      <h2>Chat with your files</h2>
+      <p>Upload files using the sidebar, then ask anything about them.<br>Claude will read and reason over your documents.</p>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-wrapper">
+      <textarea id="user-input" rows="1" placeholder="Ask something about your files…"></textarea>
+      <button class="send-btn" id="send-btn" title="Send (Enter)">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.269 20.876L5.999 12zm0 0h7.5"/>
+        </svg>
+      </button>
+    </div>
+    <p class="input-hint">Enter to send · Shift+Enter for new line</p>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const SESSION_ID = "session_" + Math.random().toString(36).slice(2, 10);
+
+  // State
+  let files = [];          // {file_id, filename, mime_type}
+  let selectedIds = new Set();
+  let chatHistory = [];    // {role, content (string)}
+  let isStreaming = false;
+
+  // Elements
+  const uploadZone = document.getElementById("upload-zone");
+  const fileInput = document.getElementById("file-input");
+  const fileList = document.getElementById("file-list");
+  const messages = document.getElementById("messages");
+  const userInput = document.getElementById("user-input");
+  const sendBtn = document.getElementById("send-btn");
+  const contextLabel = document.getElementById("context-label");
+  const progressEl = document.getElementById("upload-progress");
+
+  // ── File upload ──────────────────────────────────────────
+  uploadZone.addEventListener("click", () => fileInput.click());
+  uploadZone.addEventListener("dragover", e => { e.preventDefault(); uploadZone.classList.add("drag-over"); });
+  uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("drag-over"));
+  uploadZone.addEventListener("drop", e => {
+    e.preventDefault();
+    uploadZone.classList.remove("drag-over");
+    uploadFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener("change", () => uploadFiles(fileInput.files));
+
+  async function uploadFiles(fileList_) {
+    const fileArr = Array.from(fileList_);
+    if (!fileArr.length) return;
+
+    progressEl.style.display = "block";
+
+    for (const file of fileArr) {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("session_id", SESSION_ID);
+
+      try {
+        const res = await fetch("/upload", { method: "POST", body: fd });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        files.push({ file_id: data.file_id, filename: data.filename, mime_type: data.mime_type });
+        selectedIds.add(data.file_id);
+        showToast(`Uploaded: ${data.filename}`, "success");
+      } catch (err) {
+        showToast(`Upload failed: ${err.message}`, "error");
+      }
+    }
+
+    progressEl.style.display = "none";
+    fileInput.value = "";
+    renderFileList();
+    updateContextLabel();
+  }
+
+  function renderFileList() {
+    if (!files.length) {
+      fileList.innerHTML = '<div class="no-files">No files uploaded yet</div>';
+      return;
+    }
+
+    fileList.innerHTML = files.map(f => `
+      <div class="file-item ${selectedIds.has(f.file_id) ? "selected" : ""}"
+           data-id="${f.file_id}" onclick="toggleFile('${f.file_id}')">
+        <div class="file-icon">${fileEmoji(f.mime_type)}</div>
+        <div class="file-info">
+          <div class="file-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</div>
+          <div class="file-type">${f.mime_type}</div>
+        </div>
+        <button class="file-delete" onclick="deleteFile(event,'${f.file_id}')" title="Remove">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    `).join("");
+  }
+
+  function fileEmoji(mime) {
+    if (mime.startsWith("image/")) return "🖼";
+    if (mime === "application/pdf") return "📄";
+    if (mime === "text/csv") return "📊";
+    if (mime.startsWith("text/")) return "📝";
+    return "📎";
+  }
+
+  function toggleFile(fileId) {
+    if (selectedIds.has(fileId)) selectedIds.delete(fileId);
+    else selectedIds.add(fileId);
+    renderFileList();
+    updateContextLabel();
+  }
+
+  async function deleteFile(event, fileId) {
+    event.stopPropagation();
+    try {
+      await fetch(`/files/${SESSION_ID}/${fileId}`, { method: "DELETE" });
+      files = files.filter(f => f.file_id !== fileId);
+      selectedIds.delete(fileId);
+      renderFileList();
+      updateContextLabel();
+    } catch (err) {
+      showToast("Failed to delete file", "error");
+    }
+  }
+
+  function updateContextLabel() {
+    const n = selectedIds.size;
+    contextLabel.textContent = n === 0
+      ? "No files selected"
+      : `${n} file${n > 1 ? "s" : ""} selected`;
+  }
+
+  // ── Chat ─────────────────────────────────────────────────
+  async function sendMessage() {
+    const text = userInput.value.trim();
+    if (!text || isStreaming) return;
+
+    isStreaming = true;
+    sendBtn.disabled = true;
+    userInput.value = "";
+    autoResize();
+
+    // Remove welcome message
+    const welcome = messages.querySelector(".welcome");
+    if (welcome) welcome.remove();
+
+    // Show user message
+    const selectedFiles = files.filter(f => selectedIds.has(f.file_id));
+    appendMessage("user", text, selectedFiles);
+
+    // Add to history (plain text)
+    chatHistory.push({ role: "user", content: text });
+
+    // Placeholder for assistant
+    const assistantBubble = appendMessage("assistant", "", [], true);
+
+    // Build messages payload (history without last user msg + files)
+    const payload = {
+      session_id: SESSION_ID,
+      file_ids: [...selectedIds],
+      messages: chatHistory,
+    };
+
+    let fullText = "";
+    try {
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const raw = line.slice(5).trim();
+          if (raw === "[DONE]") break;
+
+          try {
+            const data = JSON.parse(raw);
+            if (data.error) throw new Error(data.error);
+            if (data.text) {
+              fullText += data.text;
+              assistantBubble.innerHTML = renderMarkdown(fullText) + "<span style='opacity:0.6'>▋</span>";
+              messages.scrollTop = messages.scrollHeight;
+            }
+          } catch (e) { /* ignore parse errors for partial chunks */ }
+        }
+      }
+
+      // Finalise bubble
+      assistantBubble.classList.remove("typing");
+      assistantBubble.innerHTML = renderMarkdown(fullText);
+      chatHistory.push({ role: "assistant", content: fullText });
+    } catch (err) {
+      assistantBubble.innerHTML = `<em style="color:var(--danger)">Error: ${escHtml(err.message)}</em>`;
+    }
+
+    isStreaming = false;
+    sendBtn.disabled = false;
+    userInput.focus();
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function appendMessage(role, text, attachedFiles = [], isTyping = false) {
+    const msg = document.createElement("div");
+    msg.className = `message ${role}`;
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = role === "user" ? "U" : "A";
+
+    const bubble = document.createElement("div");
+    bubble.className = `bubble ${isTyping ? "typing" : ""}`;
+
+    if (attachedFiles.length) {
+      const tags = document.createElement("div");
+      tags.className = "message-files";
+      attachedFiles.forEach(f => {
+        const tag = document.createElement("span");
+        tag.className = "message-file-tag";
+        tag.textContent = `📎 ${f.filename}`;
+        tags.appendChild(tag);
+      });
+      bubble.appendChild(tags);
+    }
+
+    if (text) {
+      const content = document.createElement("div");
+      content.innerHTML = isTyping ? text + "<span style='opacity:0.6'>▋</span>" : renderMarkdown(text);
+      bubble.appendChild(content);
+    }
+
+    msg.appendChild(avatar);
+    msg.appendChild(bubble);
+    messages.appendChild(msg);
+    messages.scrollTop = messages.scrollHeight;
+
+    return bubble;
+  }
+
+  function renderMarkdown(text) {
+    // Minimal markdown: code blocks, inline code, bold, italic, lists
+    return text
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+        `<pre><code class="language-${lang}">${code.trim()}</code></pre>`)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+      .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+      .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+      .replace(/^- (.+)$/gm, "<li>$1</li>")
+      .replace(/(<li>.*<\/li>\n?)+/g, s => `<ul>${s}</ul>`)
+      .replace(/\n\n/g, "</p><p>")
+      .replace(/^(?!<[hup])(.+)$/gm, "<p>$1</p>")
+      .replace(/<p><\/p>/g, "");
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // ── Input auto-resize ─────────────────────────────────────
+  function autoResize() {
+    userInput.style.height = "auto";
+    userInput.style.height = Math.min(userInput.scrollHeight, 160) + "px";
+  }
+
+  userInput.addEventListener("input", autoResize);
+  userInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  sendBtn.addEventListener("click", sendMessage);
+
+  // ── Toast ─────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg, type = "") {
+    const toast = document.getElementById("toast");
+    toast.textContent = msg;
+    toast.className = `toast ${type} show`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 3000);
+  }
+</script>
+</body>
+</html>
